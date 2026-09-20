@@ -1,0 +1,17 @@
+# EV Pal backend — minimal dependency set for the MVP.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+python-multipart==0.0.32
+
+# ML: SOH regression (also used by ml/train_soh_model.py)
+scikit-learn==1.9.1
+pandas==3.0.6
+numpy==2.5.3
+joblib==1.6.0
+
+# RAG-lite policy Q&A (TF-IDF retrieval + markdown frontmatter parsing)
+PyYAML==6.0.3
+
+# Testing
+pytest==9.1.1

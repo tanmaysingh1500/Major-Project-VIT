@@ -1,0 +1,71 @@
+{
+  "_disclaimer": "ILLUSTRATIVE SAMPLE DATA for the EV Pal MVP demo. Prices and specs are approximate/representative figures for well-known Indian EV models, not verified against current manufacturer price lists. Do not use for purchasing decisions. Sourcing real, verified, current specs is a 'Later' task (see README.md).",
+  "last_updated": "2025-01-01",
+  "models": [
+    {
+      "id": "tata-nexon-ev",
+      "make": "Tata",
+      "model": "Nexon EV",
+      "body_type": "SUV",
+      "price_inr": 1449000,
+      "battery_kwh": 40.5,
+      "range_km": 465,
+      "charging_speed_kw": 50,
+      "fast_charge_10_80_min": 56,
+      "warranty_years": 8,
+      "warranty_km": 160000
+    },
+    {
+      "id": "mg-zs-ev",
+      "make": "MG",
+      "model": "ZS EV",
+      "body_type": "SUV",
+      "price_inr": 1898000,
+      "battery_kwh": 50.3,
+      "range_km": 461,
+      "charging_speed_kw": 76,
+      "fast_charge_10_80_min": 60,
+      "warranty_years": 8,
+      "warranty_km": 150000
+    },
+    {
+      "id": "tata-tiago-ev",
+      "make": "Tata",
+      "model": "Tiago EV",
+      "body_type": "Hatchback",
+      "price_inr": 799000,
+      "battery_kwh": 24.0,
+      "range_km": 315,
+      "charging_speed_kw": 22,
+      "fast_charge_10_80_min": 58,
+      "warranty_years": 8,
+      "warranty_km": 160000
+    },
+    {
+      "id": "mahindra-xuv400",
+      "make": "Mahindra",
+      "model": "XUV400",
+      "body_type": "SUV",
+      "price_inr": 1599000,
+      "battery_kwh": 39.4,
+      "range_km": 456,
+      "charging_speed_kw": 50,
+      "fast_charge_10_80_min": 50,
+      "warranty_years": 8,
+      "warranty_km": 160000
+    },
+    {
+      "id": "hyundai-kona-electric",
+      "make": "Hyundai",
+      "model": "Kona Electric",
+      "body_type": "SUV",
+      "price_inr": 2384000,
+      "battery_kwh": 39.2,
+      "range_km": 452,
+      "charging_speed_kw": 50,
+      "fast_charge_10_80_min": 57,
+      "warranty_years": 8,
+      "warranty_km": 160000
+    }
+  ]
+}

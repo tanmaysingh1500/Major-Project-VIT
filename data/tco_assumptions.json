@@ -1,0 +1,29 @@
+{
+  "_disclaimer": "ILLUSTRATIVE assumption constants for the TCO calculator MVP demo. These are representative approximations, not official/current tariffs or FAME-II figures. Update with sourced, current values before any real-world use — see README.md 'Later' section.",
+  "electricity_price_inr_per_kwh": 8.0,
+  "home_charging_efficiency": 0.9,
+  "annual_maintenance_pct_of_price": 0.015,
+  "annual_insurance_pct_of_price": 0.03,
+  "insurance_depreciation_factor_per_year": 0.1,
+  "annual_resale_depreciation_pct": 0.12,
+  "min_resale_value_pct": 0.15,
+  "loan_interest_rate_annual": 0.095,
+  "loan_tenure_years": 5,
+  "loan_down_payment_pct": 0.2,
+  "central_subsidy": {
+    "scheme": "FAME-II (illustrative)",
+    "applies_to_body_types": ["Hatchback"],
+    "max_subsidy_inr": 100000,
+    "per_kwh_inr": 10000,
+    "note": "FAME-II subsidy for private 4-wheelers was in practice narrowly scoped/phased out; this simplified rule is illustrative only for the MVP demo, not a claim about current eligibility."
+  },
+  "state_subsidies_inr": {
+    "_note": "Illustrative flat state top-up subsidy amounts by state, for demo purposes only.",
+    "Delhi": 100000,
+    "Maharashtra": 100000,
+    "Gujarat": 100000,
+    "Karnataka": 0,
+    "Tamil Nadu": 0,
+    "Other": 0
+  }
+}
