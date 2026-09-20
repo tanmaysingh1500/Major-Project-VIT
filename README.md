@@ -16,7 +16,8 @@ amount, and SOH estimate comes from a deterministic function or a trained
 scikit-learn model — there is **no LLM call anywhere in this codebase**.
 The policy Q&A module retrieves and returns real corpus text verbatim
 (with citations), rather than having a model paraphrase or generate an
-answer, for the same reason.
+answer, for the same reason — embeddings are used for **retrieval only**,
+never to generate the answer text itself.
 
 ## What's implemented (MVP scope)
 
@@ -25,7 +26,7 @@ answer, for the same reason.
 | EV Knowledge Base | 5 seed Indian EV models with specs | `data/ev_models.json`, `/ev-models` |
 | TCO Calculator | Deterministic purchase/subsidy/running/maintenance/insurance/resale/loan math | `backend/app/services/tco_calculator.py`, `/tco/calculate` |
 | SOH Estimator | scikit-learn regression trained on a synthetic dataset, from indirect usage factors | `ml/`, `backend/app/services/soh_estimator.py`, `/soh/estimate` |
-| Policy Q&A (RAG-lite) | TF-IDF retrieval over a small local markdown corpus, with citations + last-verified dates | `data/policy_corpus/`, `backend/app/services/policy_rag.py`, `/policy/ask` |
+| Policy Q&A (RAG-lite) | Sentence-transformer embeddings + a local Chroma vector DB, retrieving over a small markdown corpus, with citations + last-verified dates | `data/policy_corpus/`, `backend/app/services/policy_rag.py`, `/policy/ask` |
 | Recommendation view | Transparent weighted-sum scoring combining all of the above, with user-adjustable weights | `backend/app/services/recommend.py`, `/recommend/` |
 
 All five are wired into a single React frontend (`frontend/`) with a tab
@@ -39,12 +40,12 @@ per module, hitting a FastAPI backend (`backend/`) over a local dev proxy.
   dropped in later without rewriting the modules themselves.
 - **SHAP explainability** — `soh_estimator.explain_soh()` is a stub with a
   TODO showing exactly where a `shap.TreeExplainer` would plug in.
-- **Sentence-transformers + Chroma** — the RAG-lite module uses a local
-  scikit-learn `TfidfVectorizer` instead, because this build environment
-  had no network access to download an embedding model from Hugging Face.
-  The retrieval interface (`build_index()` / `retrieve()`) is the seam —
-  swapping in real embeddings + Chroma only touches
-  `backend/app/services/policy_rag.py`.
+- **Live-source retrieval / staleness tracking** — the RAG module now uses
+  real `sentence-transformers` embeddings (`all-MiniLM-L6-v2`) stored in a
+  local Chroma vector DB (`data/chroma_db/`, rebuilt from
+  `data/policy_corpus/` on every backend start), but it still only indexes
+  the 7 sample markdown files — there's no live source ingestion or
+  automatic staleness checking against government sites yet.
 - **Full 10–15 model catalog** — only 5 seed models are included, in a
   single JSON file (`data/ev_models.json`) that's trivial to extend.
 - **Live/verified policy data** — the policy corpus is 7 short markdown
@@ -61,6 +62,7 @@ backend/         FastAPI app (routes, services, models, tests)
 frontend/        React (Vite) app
 ml/              SOH training script, synthetic data generator, saved model
 data/            Seed EV catalog, TCO assumption constants, policy corpus
+                 (data/chroma_db/ is generated at runtime — not checked in)
 README.md        This file
 ARCHITECTURE.md  Maps MVP modules back to the full FF-180 synopsis
 ```
@@ -78,6 +80,12 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Health check: `curl http://127.0.0.1:8000/health`
+
+> **First run only:** the policy Q&A module downloads its embedding model
+> (`all-MiniLM-L6-v2`, ~80MB) from Hugging Face the first time the backend
+> starts, then caches it locally (`~/.cache/huggingface`) for every run
+> after that. This needs network access once; after the first successful
+> start it works fully offline.
 
 ### Frontend
 

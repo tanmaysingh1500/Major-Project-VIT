@@ -27,20 +27,30 @@ API) of verified specs; `ev_catalog.py`'s function signatures
 
 | | Synopsis | This MVP |
 |---|---|---|
-| Embeddings | sentence-transformers (or similar local model) | scikit-learn `TfidfVectorizer` |
-| Vector store | Chroma | In-memory cosine-similarity search over a cached TF-IDF matrix |
+| Embeddings | sentence-transformers (or similar local model) | `sentence-transformers` (`all-MiniLM-L6-v2`), matches the synopsis |
+| Vector store | Chroma | Chroma (`PersistentClient`, cosine similarity), matches the synopsis |
 | Corpus | Live government sources, with freshness/staleness tracking | 7 hand-written illustrative markdown docs |
 | Answer generation | LLM synthesizes an answer from retrieved chunks, with citations | Top-matching chunk(s) returned **verbatim**, with citation + `last_verified` date |
 | Freshness tracking | Full staleness detection against live sources | A static `last_verified` date per document, no live checking |
+| Index freshness | Not specified | Collection is dropped and rebuilt from the markdown files on every backend start — never stale relative to disk, at the cost of a few seconds of re-embedding on startup |
 
-**Why this shape:** this build environment has no network access to
-download an embedding model from Hugging Face, so TF-IDF was used as a
-drop-in, fully local substitute — it needs no external downloads and no
-API key. It's a materially weaker retriever than sentence-transformer
-embeddings (no semantic/synonym matching, only term overlap), but the
-*architecture* — embed corpus once, embed query, rank by similarity, cite
-sources — is the same, and the swap point is isolated to
-`build_index()`/`retrieve()` in `backend/app/services/policy_rag.py`.
+**Why this shape:** the embeddings + vector store layer now matches the
+synopsis directly — real `sentence-transformers` embeddings, queried
+through a real Chroma collection (`data/chroma_db/`, cosine similarity
+space). This was originally built with a local `TfidfVectorizer` substitute
+because the initial build environment had no network access to download an
+embedding model from Hugging Face; that limitation didn't apply once the
+project moved to an environment with normal internet access, so it was
+swapped for the real thing. The retrieval *interface*
+(`build_index()`/`retrieve()`) didn't change across that swap — only the
+implementation inside `backend/app/services/policy_rag.py` did, which is
+exactly why the swap was cheap.
+
+What's still a simplification relative to the full synopsis is the
+**corpus and freshness tracking**, not the retrieval mechanism: this MVP
+indexes 7 hand-written illustrative markdown files rather than live
+government sources, and "freshness" is just a static `last_verified` field
+per document rather than an active staleness check against a live source.
 
 The decision to return retrieved text **verbatim** rather than having an
 LLM paraphrase/synthesize it was deliberate, not just a limitation: it
@@ -51,13 +61,14 @@ attached) is a clearly-scoped "Later" upgrade — see the TODO-style note in
 `policy_rag.py`'s module docstring.
 
 **Later:**
-1. Swap `TfidfVectorizer` for `sentence-transformers` + `Chroma` (needs
-   network access to pull the embedding model).
-2. Replace the sample corpus with real, sourced government documents, and
+1. Replace the sample corpus with real, sourced government documents, and
    add a job that periodically re-checks source pages against
    `last_verified` to flag staleness.
-3. Optionally add an LLM answer-generation step on top of retrieval
+2. Optionally add an LLM answer-generation step on top of retrieval
    (with an API key), keeping the same citation/source structure.
+3. For a larger corpus, switch the startup rebuild in `build_index()` for
+   incremental indexing (only re-embed changed/added documents) so startup
+   time doesn't grow linearly with corpus size.
 
 ## 3. Agentic AI Orchestration (Policy / Specification / Battery / Cost / Recommendation agents)
 
