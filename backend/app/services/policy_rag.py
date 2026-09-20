@@ -18,6 +18,7 @@ upgrade (see ARCHITECTURE.md) once an API key is available.
 """
 
 import re
+import threading
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -83,41 +84,62 @@ def _get_embedding_function():
     return embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL_NAME)
 
 
-@lru_cache(maxsize=1)
+# build_index() is called from request-handling threads (FastAPI runs sync
+# route handlers in a worker threadpool), so it needs real thread-safety, not
+# just lru_cache. lru_cache's internal lock only protects the cache dict from
+# corruption -- it does NOT stop two threads from both entering the wrapped
+# function on a simultaneous first-call cache miss. Two threads racing here
+# would both call client.create_collection(COLLECTION_NAME); the second one
+# fails with "Collection already exists". A manual double-checked-locking
+# cache guarantees the Chroma collection is only ever built once per process.
+_index_lock = threading.Lock()
+_index_cache: dict | None = None
+
+
 def build_index():
     """Builds (and caches) the Chroma vector index over the local policy
-    corpus. Rebuilds from scratch every process start so the index can never
-    go stale relative to the markdown files on disk."""
-    chunks = _load_corpus()
+    corpus. Rebuilds from scratch on first use each process start so the
+    index can never go stale relative to the markdown files on disk."""
+    global _index_cache
 
-    client = chromadb.PersistentClient(path=str(POLICY_CHROMA_DIR))
-    try:
-        client.delete_collection(COLLECTION_NAME)
-    except Exception:
-        pass  # nothing to delete on a fresh DB directory
+    if _index_cache is not None:
+        return _index_cache
 
-    collection = client.create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=_get_embedding_function(),
-        metadata={"hnsw:space": "cosine"},
-    )
+    with _index_lock:
+        if _index_cache is not None:  # another thread built it while we waited
+            return _index_cache
 
-    if chunks:
-        collection.add(
-            ids=[f"chunk-{i}" for i in range(len(chunks))],
-            documents=[c.text for c in chunks],
-            metadatas=[
-                {
-                    "doc_title": c.doc_title,
-                    "doc_filename": c.doc_filename,
-                    "last_verified": c.last_verified,
-                    "disclaimer": c.disclaimer,
-                }
-                for c in chunks
-            ],
+        chunks = _load_corpus()
+
+        client = chromadb.PersistentClient(path=str(POLICY_CHROMA_DIR))
+        try:
+            client.delete_collection(COLLECTION_NAME)
+        except Exception:
+            pass  # nothing to delete on a fresh DB directory
+
+        collection = client.create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=_get_embedding_function(),
+            metadata={"hnsw:space": "cosine"},
         )
 
-    return {"collection": collection, "chunk_count": len(chunks), "chunks": chunks}
+        if chunks:
+            collection.add(
+                ids=[f"chunk-{i}" for i in range(len(chunks))],
+                documents=[c.text for c in chunks],
+                metadatas=[
+                    {
+                        "doc_title": c.doc_title,
+                        "doc_filename": c.doc_filename,
+                        "last_verified": c.last_verified,
+                        "disclaimer": c.disclaimer,
+                    }
+                    for c in chunks
+                ],
+            )
+
+        _index_cache = {"collection": collection, "chunk_count": len(chunks), "chunks": chunks}
+        return _index_cache
 
 
 def retrieve(query: str, top_k: int = 3) -> list[dict]:
