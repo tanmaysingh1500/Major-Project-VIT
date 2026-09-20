@@ -1,19 +1,17 @@
 """
 RAG-lite Policy Q&A service.
 
-Per the synopsis, the full system calls for sentence-transformers embeddings
-+ a Chroma vector store. In THIS environment there is no network access to
-download a sentence-transformers model from Hugging Face, so this MVP swaps
-in a scikit-learn TfidfVectorizer + cosine similarity over locally-stored
-chunks — same retrieval interface (embed corpus once, embed query, rank by
-similarity), zero external downloads, fully local. Swapping back to
-sentence-transformers + Chroma later only touches this file: build_index()
-and retrieve() are the seam.
+Embeds the local policy corpus with a sentence-transformers model and
+stores/queries the vectors in a local Chroma vector database. The corpus is
+tiny (7 markdown files), so build_index() clears and rebuilds the Chroma
+collection on every process start -- this guarantees the index always
+reflects whatever is currently in data/policy_corpus/, with no separate
+"reindex" step to remember to run after editing a doc.
 
 Design choice consistent with the project's core principle ("numbers are
 computed, not hallucinated"): there is NO LLM call here. The "answer" to a
 policy question is the most relevant retrieved chunk(s) themselves, returned
-verbatim with their source document and last-verified date — never a
+verbatim with their source document and last-verified date -- never a
 model-generated paraphrase that could invent unsupported claims. A real LLM
 answer-generation step grounded in these chunks is a natural "Later"
 upgrade (see ARCHITECTURE.md) once an API key is available.
@@ -23,12 +21,17 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-import numpy as np
+import chromadb
 import yaml
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from chromadb.utils import embedding_functions
 
-from app.config import POLICY_CORPUS_DIR
+from app.config import POLICY_CHROMA_DIR, POLICY_CORPUS_DIR
+
+COLLECTION_NAME = "policy_corpus"
+# Small (~80MB), fast, well-established general-purpose sentence embedding
+# model. Downloaded from Hugging Face on first run, then cached locally
+# (~/.cache/huggingface) for every run after that.
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
 @dataclass
@@ -76,42 +79,71 @@ def _load_corpus() -> list[Chunk]:
 
 
 @lru_cache(maxsize=1)
+def _get_embedding_function():
+    return embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL_NAME)
+
+
+@lru_cache(maxsize=1)
 def build_index():
-    """Builds (and caches) the TF-IDF index over the local policy corpus.
-    Cheap enough (a handful of documents) to build lazily on first use."""
+    """Builds (and caches) the Chroma vector index over the local policy
+    corpus. Rebuilds from scratch every process start so the index can never
+    go stale relative to the markdown files on disk."""
     chunks = _load_corpus()
-    corpus_texts = [c.text for c in chunks]
-    vectorizer = TfidfVectorizer(stop_words="english")
-    matrix = vectorizer.fit_transform(corpus_texts) if corpus_texts else None
-    return {"chunks": chunks, "vectorizer": vectorizer, "matrix": matrix}
+
+    client = chromadb.PersistentClient(path=str(POLICY_CHROMA_DIR))
+    try:
+        client.delete_collection(COLLECTION_NAME)
+    except Exception:
+        pass  # nothing to delete on a fresh DB directory
+
+    collection = client.create_collection(
+        name=COLLECTION_NAME,
+        embedding_function=_get_embedding_function(),
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    if chunks:
+        collection.add(
+            ids=[f"chunk-{i}" for i in range(len(chunks))],
+            documents=[c.text for c in chunks],
+            metadatas=[
+                {
+                    "doc_title": c.doc_title,
+                    "doc_filename": c.doc_filename,
+                    "last_verified": c.last_verified,
+                    "disclaimer": c.disclaimer,
+                }
+                for c in chunks
+            ],
+        )
+
+    return {"collection": collection, "chunk_count": len(chunks), "chunks": chunks}
 
 
 def retrieve(query: str, top_k: int = 3) -> list[dict]:
     index = build_index()
-    chunks = index["chunks"]
-    if not chunks:
+    if index["chunk_count"] == 0:
         return []
 
-    vectorizer: TfidfVectorizer = index["vectorizer"]
-    matrix = index["matrix"]
+    result = index["collection"].query(query_texts=[query], n_results=top_k)
 
-    query_vec = vectorizer.transform([query])
-    scores = cosine_similarity(query_vec, matrix)[0]
+    documents = result["documents"][0]
+    metadatas = result["metadatas"][0]
+    distances = result["distances"][0]
 
-    ranked_idx = np.argsort(scores)[::-1][:top_k]
     results = []
-    for idx in ranked_idx:
-        if scores[idx] <= 0:
-            continue
-        chunk = chunks[idx]
+    for text, meta, distance in zip(documents, metadatas, distances):
+        # hnsw:space="cosine" => Chroma distance = 1 - cosine_similarity,
+        # so similarity = 1 - distance (clamped to [0, 1] for display).
+        similarity = max(0.0, min(1.0, 1 - distance))
         results.append(
             {
-                "text": chunk.text,
-                "source_document": chunk.doc_title,
-                "source_filename": chunk.doc_filename,
-                "last_verified": chunk.last_verified,
-                "disclaimer": chunk.disclaimer,
-                "relevance_score": round(float(scores[idx]), 4),
+                "text": text,
+                "source_document": meta["doc_title"],
+                "source_filename": meta["doc_filename"],
+                "last_verified": meta["last_verified"],
+                "disclaimer": meta["disclaimer"],
+                "relevance_score": round(similarity, 4),
             }
         )
     return results
@@ -119,7 +151,7 @@ def retrieve(query: str, top_k: int = 3) -> list[dict]:
 
 def answer_question(query: str, top_k: int = 3) -> dict:
     """RAG-lite 'answer': the top retrieved chunk(s), returned verbatim with
-    citations — no LLM paraphrase, so nothing here can be hallucinated beyond
+    citations -- no LLM paraphrase, so nothing here can be hallucinated beyond
     what's literally in the sample corpus."""
     results = retrieve(query, top_k=top_k)
     if not results:

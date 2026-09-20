@@ -12,6 +12,8 @@ joblib==1.6.0
 
 # RAG-lite policy Q&A (TF-IDF retrieval + markdown frontmatter parsing)
 PyYAML==6.0.3
+sentence-transformers>=2.7,<3
+chromadb>=0.5,<1.6
 
 # Testing
 pytest==9.1.1

@@ -16,6 +16,7 @@ ML_DIR = ROOT_DIR / "ml"
 EV_MODELS_PATH = DATA_DIR / "ev_models.json"
 TCO_ASSUMPTIONS_PATH = DATA_DIR / "tco_assumptions.json"
 POLICY_CORPUS_DIR = DATA_DIR / "policy_corpus"
+POLICY_CHROMA_DIR = DATA_DIR / "chroma_db"
 
 SOH_MODEL_PATH = ML_DIR / "soh_model.joblib"
 SOH_TRAINING_DATA_PATH = ML_DIR / "soh_training_data.csv"
