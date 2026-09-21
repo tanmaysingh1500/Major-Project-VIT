@@ -71,8 +71,6 @@ export default function SohPage() {
             <span className="soh-value">{result.estimated_soh_pct}%</span>
             <span className="soh-label">Estimated Battery State of Health</span>
           </div>
-          <p className="model-note">{result.model_type}</p>
-          <p className="model-note">{result.note}</p>
         </div>
       )}
     </div>
